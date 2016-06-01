@@ -1,0 +1,31 @@
+From 4577cf268d530d36978cf8a6e77eccc743b54731 Mon Sep 17 00:00:00 2001
+From: blogic <blogic@3c298f89-4303-0410-b956-a3cf2f4a3e73>
+Date: Sat, 9 Apr 2016 10:24:47 +0000
+Subject: [PATCH] ramips: mt7621: fix Ubiquiti EdgeRouter X profile
+
+Remove unnecessary packages to reduce image size so it fits in initramfs (to enable upgrading from factory firmware).
+
+Signed-off-by: Roman Yeryomin <roman@advem.lv>
+
+git-svn-id: svn://svn.openwrt.org/openwrt/trunk@49127 3c298f89-4303-0410-b956-a3cf2f4a3e73
+---
+ target/linux/ramips/mt7621/profiles/ubnt.mk | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/target/linux/ramips/mt7621/profiles/ubnt.mk b/target/linux/ramips/mt7621/profiles/ubnt.mk
+index b66b206..3f1af02 100644
+--- a/target/linux/ramips/mt7621/profiles/ubnt.mk
++++ b/target/linux/ramips/mt7621/profiles/ubnt.mk
+@@ -8,7 +8,8 @@
+ define Profile/UBNT-ERX
+ 	NAME:=Ubiquiti EdgeRouter X
+ 	FEATURES+=nand -usb
+-	PACKAGES:=-kmod-mt76 -wpad-mini -kmod-cfg80211
++	PACKAGES:=-kmod-mt76 -kmod-rt2800-pci -kmod-cfg80211 \
++			-wpad-mini -iwinfo
+ endef
+ 
+ define Profile/UBNT-ERX/Description
+-- 
+2.7.0
+

@@ -8,3 +8,5 @@
 023-gl-ar150-cc.patch
 024-openwrt_add_ramips-nexx-image.patch
 025-openwrt_add_tpl-wr842v3.patch
+026-openwrt-add-ubnt-erx.patch
+027-openwrt-fix-ubnt-erx-makefile.patch
