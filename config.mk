@@ -3,5 +3,5 @@ SHELL:=$(shell which bash)
 TARGET=ar71xx
 PACKAGES_LIST_DEFAULT=default backbone
 OPENWRT_SRC=git://git.openwrt.org/15.05/openwrt.git
-OPENWRT_COMMIT=64e116779c0f7da6d98068b8e7c50f528c8a91f2
+OPENWRT_COMMIT=5eee4f28dcda68490bf4df8470a6b41c434823af
 MAKE_ARGS=
