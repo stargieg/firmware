@@ -43,6 +43,9 @@ lede-clean: stamp-clean-lede-cleaned .stamp-lede-cleaned
 lede-clean-bin:
 	rm -rf $(LEDE_SRC_DIR)/bin
 
+lede-clean-tmp:
+	rm -rf $(LEDE_SRC_DIR)/tmp
+
 # update lede and checkout specified commit
 lede-update: stamp-clean-lede-updated .stamp-lede-updated
 .stamp-lede-updated: .stamp-lede-cleaned
@@ -87,9 +90,9 @@ else
 endif
 
 # lede config
-$(LEDE_SRC_DIR)/.config: .stamp-patched $(TARGET_CONFIG) .stamp-build_rev
+$(LEDE_SRC_DIR)/.config: .stamp-patched $(TARGET_CONFIG) .stamp-build_rev lede-clean-tmp
 	cat $(TARGET_CONFIG) >$(LEDE_SRC_DIR)/.config
-	sed -i "/^CONFIG_VERSION_NUMBER=/ s/\"$$/\-$(FW_REVISION)\"/" $(LEDE_SRC_DIR)/.config
+	echo "CONFIG_DOWNLOAD_FOLDER=\"$(FW_DIR)/dl\"" >>$(LEDE_SRC_DIR)/.config
 	sed -i "/^CONFIG_VERSION_REPO=/ s/\"$$/\/$(FW_REVISION)\"/" $(LEDE_SRC_DIR)/.config
 	$(UMASK); \
 	  $(MAKE) -C $(LEDE_SRC_DIR) defconfig
@@ -97,7 +100,7 @@ $(LEDE_SRC_DIR)/.config: .stamp-patched $(TARGET_CONFIG) .stamp-build_rev
 # prepare lede working copy
 prepare: stamp-clean-prepared .stamp-prepared
 .stamp-prepared: .stamp-patched $(LEDE_SRC_DIR)/.config
-	sed -i 's,^# REVISION:=.*,REVISION:=$(FW_REVISION),g' $(LEDE_SRC_DIR)/include/version.mk
+	sed -i 's,.*REVISION:=.*,REVISION:=$(FW_REVISION),g' $(LEDE_SRC_DIR)/include/version.mk
 	touch $@
 
 # compile
@@ -115,12 +118,12 @@ firmwares: stamp-clean-firmwares .stamp-firmwares
 .stamp-firmwares: .stamp-compiled
 	rm -rf $(IB_BUILD_DIR)
 	mkdir -p $(IB_BUILD_DIR)
-	$(eval TOOLCHAIN_PATH := $(shell printf "%s:" $(LEDE_SRC_DIR)/staging_dir/toolchain-*/bin))
-	$(eval IB_FILE := $(shell ls $(LEDE_SRC_DIR)/bin/targets/$(MAINTARGET)/$(SUBTARGET)/*imagebuilder*.tar.bz2))
+	# $(eval TOOLCHAIN_PATH := $(shell printf "%s:" $(LEDE_SRC_DIR)/staging_dir/toolchain-*/bin))
+	$(eval IB_FILE := $(shell ls $(LEDE_SRC_DIR)/bin/targets/$(MAINTARGET)/$(SUBTARGET)*/*imagebuilder*.tar.xz))
 	cd $(IB_BUILD_DIR); tar xf $(IB_FILE)
 	# shorten dir name to prevent too long paths
-	mv $(IB_BUILD_DIR)/$(shell basename $(IB_FILE) .tar.bz2) $(IB_BUILD_DIR)/imgbldr
-	export PATH=$(PATH):$(TOOLCHAIN_PATH); \
+	mv $(IB_BUILD_DIR)/$(shell basename $(IB_FILE) .tar.xz) $(IB_BUILD_DIR)/imgbldr
+	# export PATH=$(PATH):$(TOOLCHAIN_PATH); \
 	PACKAGES_PATH="$(FW_DIR)/packages"; \
 	PACKAGES_FILE_TARGET="$(FW_DIR)/packages/$(TARGET).txt"; \
 	for PROFILE_ITER in $(PROFILES); do \
@@ -145,8 +148,9 @@ firmwares: stamp-clean-firmwares .stamp-firmwares
 	    fi; \
 	    $(UMASK);\
 	    echo -e "\n *** Building Kathleen image file for profile \"$${PROFILE}\" with packages list \"$${PACKAGES_FILE}\".\n"; \
-	    $(MAKE) -C $(IB_BUILD_DIR)/imgbldr image PROFILE="$$PROFILE" PACKAGES="$$PACKAGES_LIST" BIN_DIR="$(IB_BUILD_DIR)/imgbldr/bin/$$PACKAGES_FILE" $$CUSTOM_POSTINST_PARAM || exit 1; \
-	    cp -a $(IB_BUILD_DIR)/imgbldr/build_dir/target-*/root-*/usr/lib/opkg/status $(IB_BUILD_DIR)/imgbldr/bin/$$PACKAGES_FILE/opkg-status.txt ;\
+	    $(MAKE) -C $(IB_BUILD_DIR)/imgbldr image PROFILE="$$PROFILE" PACKAGES="$$PACKAGES_LIST" $$CUSTOM_POSTINST_PARAM || exit 1; \
+	    mkdir -p $(IB_BUILD_DIR)/bin/$$PACKAGES_FILE; \
+	    mv $(IB_BUILD_DIR)/imgbldr/bin/targets/$(MAINTARGET)/$(SUBTARGET)/* $(IB_BUILD_DIR)/bin/$$PACKAGES_FILE/; \
 	  done; \
 	done
 	mkdir -p $(FW_TARGET_DIR)
@@ -168,7 +172,7 @@ firmwares: stamp-clean-firmwares .stamp-firmwares
 	  echo "Feed $$FEED: repository from $$FEED_GIT_REPO, git branch \"$$FEED_GIT_BRANCH_ESC\", revision $$FEED_REVISION" >> $$VERSION_FILE; \
 	done
 	# copy different firmwares (like vpn, minimal) including imagebuilder
-	for DIR_ABS in $(IB_BUILD_DIR)/imgbldr/bin/*; do \
+	for DIR_ABS in $(IB_BUILD_DIR)/bin/*; do \
 	  TARGET_DIR=$(FW_TARGET_DIR)/$$(basename $$DIR_ABS); \
 	  rm -rf $$TARGET_DIR; \
 	  mv $$DIR_ABS $$TARGET_DIR; \
@@ -184,15 +188,15 @@ firmwares: stamp-clean-firmwares .stamp-firmwares
 	done;
 	# copy imagebuilder, sdk and toolchain (if existing)
 	# remove old versions
-	rm -f $(FW_TARGET_DIR)/*imagebuilder*.tar.bz2
+	rm -f $(FW_TARGET_DIR)/*imagebuilder*.tar.xz
 	cp -a $(IB_FILE) $(FW_TARGET_DIR)/
 	# copy core packages
 	mkdir -p $(FW_TARGET_DIR)/packages
-	cp -a $(LEDE_SRC_DIR)/bin/targets/$(MAINTARGET)/$(SUBTARGET)/packages $(FW_TARGET_DIR)
+	cp -a $(LEDE_SRC_DIR)/bin/targets/$(MAINTARGET)/$(SUBTARGET)*/packages $(FW_TARGET_DIR)
 	# copy base, luci and routing packages
 	mkdir -p $(PACKAGE_TARGET_DIR)
 	cp -a $(LEDE_SRC_DIR)/bin/packages $(PACKAGE_TARGET_DIR)
-	rm -rf $(IB_BUILD_DIR)
+	#rm -rf $(IB_BUILD_DIR)
 	touch $@
 
 stamp-clean-%:
