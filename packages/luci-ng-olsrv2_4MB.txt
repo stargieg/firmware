@@ -19,10 +19,10 @@ luci2-rpc-rrdns
 luci2-app-olsrd2
 
 -firewall
+-iptables
+-ip6tables
+-kmod-nf-nathelper
+-ppp
+-ppp-mod-pppoe
 -kmod-ledtrig-usbdev
 -kmod-usb2
--ppp-mod-pppoe
--ppp
--kmod-nf-nathelper
--ip6tables
--iptables

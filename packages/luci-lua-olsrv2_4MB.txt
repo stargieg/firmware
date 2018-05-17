@@ -3,7 +3,6 @@ freifunk-common
 community-profiles
 
 # Common
-mdnsd
 ip
 
 # GUI
@@ -11,12 +10,6 @@ luci2-ffwizard
 luci2-ffwizard-olsrd-ipv4
 luci2-ffwizard-olsrv2-ipv6
 luci2-ffwizard-lua
-luci2-ffwizard-kadnode
-
-luci-app-olsr
-luci-i18n-olsr-de
-luci-app-olsr-services
-luci-app-olsr-viz
 
 -firewall
 -iptables
@@ -26,3 +19,5 @@ luci-app-olsr-viz
 -ppp-mod-pppoe
 -kmod-ledtrig-usbdev
 -kmod-usb2
+-kmod-usb-core
+-kmod-usb-ledtrig-usbport

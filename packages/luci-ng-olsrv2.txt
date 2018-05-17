@@ -19,10 +19,8 @@ iptables-mod-u32
 iptables-mod-ulog
 ip6tables-extra
 ip6tables-mod-nat
-kmod-ipt-nathelper-rtsp
 kmod-nf-nathelper
 kmod-nf-nathelper-extra
-kmod-gre
 
 # GUI
 luci2-ffwizard
@@ -48,20 +46,20 @@ collectd-mod-ping
 collectd-mod-uptime
 
 # Common extra
-6in4
-chat
-comgt
-etherwake
-fdisk
-iftop
-ntpclient
-openvpn-openssl
-relayd
-resolveip
-tcpdump-mini
-mtr
-iperf
-tmux
-vnstat
-ethtool
-usbutils
+#6in4
+#chat
+#comgt
+#etherwake
+#fdisk
+#iftop
+#ntpclient
+#openvpn-openssl
+#relayd
+#resolveip
+#tcpdump-mini
+#mtr
+#iperf
+#tmux
+#vnstat
+#ethtool
+#usbutils

@@ -1,1 +1,5 @@
+#005-add-turris-omnia.patch
 023-wireless-regdb.patch
+010-fix-packages-list-A60.patch
+304-feeds-packages-collectd-deps.patch
+305-feeds-luci-luci-mod-freifunk-deps.patch

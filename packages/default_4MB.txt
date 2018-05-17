@@ -1,52 +1,24 @@
--kmod-usb-core
--kmod-usb2
--kmod-ledtrig-usbdev
--kmod-usb-ohci
--kmod-ppp
--kmod-usb-serial
--ppp
--ppp-mod-pppoe
--wpad
--opkg
--usign
-
 # Defaults
-freifunk-berlin-dhcp-defaults
-freifunk-berlin-firewall-defaults
-freifunk-berlin-freifunk-defaults
-freifunk-berlin-migration
-freifunk-berlin-network-defaults
-freifunk-berlin-olsrd-defaults
+freifunk-common
 community-profiles
 
 # Common
-dnsmasq
-qos-scripts
-firewall
-iwinfo
-libiwinfo-lua
+ip
 
 # GUI
-luci-theme-bootstrap
-uhttpd
-uhttpd-mod-ubus
-luci-app-ffwizard-berlin
-luci-mod-freifunk-ui
-luci-app-olsr
-luci-app-olsr-services
-luci-app-owm
-luci-app-owm-cmd
+luci2-ffwizard
+luci2-ffwizard-olsrd-ipv4
+luci2-ffwizard-olsrv2-ipv6
+luci2-ffwizard-lua
+luci-mod-freifunk
 
-# OLSR
-olsrd
-olsrd-mod-arprefresh
-olsrd-mod-dyn-gw
-olsrd-mod-jsoninfo
-olsrd-mod-nameservice
-kmod-ipip
-
-# IPv6
-kmod-ipv6
-
-# VPN
-openvpn-polarssl
+-firewall
+-iptables
+-ip6tables
+-kmod-nf-nathelper
+-ppp
+-ppp-mod-pppoe
+-kmod-ledtrig-usbdev
+-kmod-usb2
+-kmod-usb-core
+-kmod-usb-ledtrig-usbport

@@ -1,0 +1,13 @@
+diff --git a/feeds/packages/utils/collectd/Makefile b/feeds/packages/utils/collectd/Makefile
+index 20d5d5ea..1d00a85d 100644
+--- a/feeds/packages/utils/collectd/Makefile
++++ b/feeds/packages/utils/collectd/Makefile
+@@ -194,7 +194,7 @@ endef
+ 
+ define Package/collectd
+ $(call Package/collectd/Default)
+-  DEPENDS:= +libpthread +zlib +libltdl +libip4tc
++  DEPENDS:= +libpthread +zlib +libltdl
+   MENU:=1
+ endef
+ 

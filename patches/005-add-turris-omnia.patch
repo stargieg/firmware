@@ -1,0 +1,830 @@
+From 62152942fd1f75ad70620bec90650572e583ccc3 Mon Sep 17 00:00:00 2001
+From: Ryan Mounce <ryan@mounce.com.au>
+Date: Sat, 3 Jun 2017 01:56:55 +0930
+Subject: [PATCH 1/3] mvsw61xx: enable internal delay for 6176 CPU ports
+
+RGMII internal delay must be enabled to support some devices where PCB
+trace length is short. There is no harm in enabling if unnecessary.
+
+Patch authored by Michael Altizer <xiche@verizon.net>, rewritten to comply
+with LEDE submission requirements.
+
+Signed-off-by: Ryan Mounce <ryan@mounce.com.au>
+---
+ .../linux/generic/files/drivers/net/phy/mvsw61xx.c | 24 +++++++++++++++++-----
+ .../linux/generic/files/drivers/net/phy/mvsw61xx.h |  2 ++
+ 2 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/target/linux/generic/files/drivers/net/phy/mvsw61xx.c b/target/linux/generic/files/drivers/net/phy/mvsw61xx.c
+index 9a689e6c81..69bcae4902 100644
+--- a/target/linux/generic/files/drivers/net/phy/mvsw61xx.c
++++ b/target/linux/generic/files/drivers/net/phy/mvsw61xx.c
+@@ -670,16 +670,30 @@ static int _mvsw61xx_reset(struct switch_dev *dev, bool full)
+ 					    BMCR_SPEED1000);
+ 		}
+ 
+-		/* enable SerDes if necessary */
+-		if (full && i >= 5 && state->model == MV_IDENT_VALUE_6176) {
++		if (state->model == MV_IDENT_VALUE_6176) {
+ 			u16 sts = sr16(dev, MV_PORTREG(STATUS, i));
+ 			u16 mode = sts & MV_PORT_STATUS_CMODE_MASK;
+ 
+-			if (mode == MV_PORT_STATUS_CMODE_100BASE_X ||
+-			    mode == MV_PORT_STATUS_CMODE_1000BASE_X ||
+-			    mode == MV_PORT_STATUS_CMODE_SGMII) {
++			/* enable SerDes if necessary */
++			if (i >= 5 && full &&
++				(mode == MV_PORT_STATUS_CMODE_100BASE_X ||
++				 mode == MV_PORT_STATUS_CMODE_1000BASE_X ||
++				 mode == MV_PORT_STATUS_CMODE_SGMII)) {
+ 				mvsw61xx_enable_serdes(dev);
+ 			}
++
++			/* Enable RGMII internal delay for CPU ports */
++			if (i == state->cpu_port0 || i == state->cpu_port1) {
++				u16 reg = sr16(dev, MV_PORTREG(PHYCTL, i));
++				if ((reg & (MV_PHYCTL_RGMII_DELAY_RXCLK |
++					    MV_PHYCTL_RGMII_DELAY_TXCLK)) !=
++					   (MV_PHYCTL_RGMII_DELAY_RXCLK |
++					    MV_PHYCTL_RGMII_DELAY_TXCLK)) {
++					reg |= MV_PHYCTL_RGMII_DELAY_RXCLK |
++					       MV_PHYCTL_RGMII_DELAY_TXCLK;
++					sw16(dev, MV_PORTREG(PHYCTL, i), reg);
++				}
++			}
+ 		}
+ 	}
+ 
+diff --git a/target/linux/generic/files/drivers/net/phy/mvsw61xx.h b/target/linux/generic/files/drivers/net/phy/mvsw61xx.h
+index a07b09cd14..a9d0336e00 100644
+--- a/target/linux/generic/files/drivers/net/phy/mvsw61xx.h
++++ b/target/linux/generic/files/drivers/net/phy/mvsw61xx.h
+@@ -78,6 +78,8 @@ enum {
+ enum {
+ 	MV_PHYCTL_FC_ENABLE		= (3 << 6),
+ 	MV_PHYCTL_FC_DISABLE		= (1 << 6),
++	MV_PHYCTL_RGMII_DELAY_TXCLK	= (1 << 14),
++	MV_PHYCTL_RGMII_DELAY_RXCLK	= (1 << 15),
+ };
+ 
+ enum {
+
+From a2a3f896bc5cc671dac4f467f9d26a0c0f05ffad Mon Sep 17 00:00:00 2001
+From: Ryan Mounce <ryan@mounce.com.au>
+Date: Fri, 14 Jul 2017 00:11:22 +0930
+Subject: [PATCH 2/3] mvebu: generate ramdisk image by default
+
+ramdisk images must be used in the installation process for upcoming
+Turris Omnia support.
+
+Signed-off-by: Ryan Mounce <ryan@mounce.com.au>
+---
+ target/linux/mvebu/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/linux/mvebu/Makefile b/target/linux/mvebu/Makefile
+index a07aa7cf2d..7e00710ea0 100644
+--- a/target/linux/mvebu/Makefile
++++ b/target/linux/mvebu/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ ARCH:=arm
+ BOARD:=mvebu
+ BOARDNAME:=Marvell Armada 37x/38x/XP
+-FEATURES:=fpu usb pci pcie gpio nand squashfs
++FEATURES:=fpu usb pci pcie gpio nand squashfs ramdisk
+ CPU_TYPE:=cortex-a9
+ CPU_SUBTYPE:=vfpv3
+ MAINTAINER:=Imre Kaloz <kaloz@openwrt.org>
+
+From eff84978ab634f7c9dcc56ab6aa629ff777bb0f6 Mon Sep 17 00:00:00 2001
+From: Ryan Mounce <ryan@mounce.com.au>
+Date: Sat, 3 Jun 2017 02:01:06 +0930
+Subject: [PATCH 3/3] mvebu: add support for Turris Omnia
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds support for the Turris Omnia and builds an eMMC sysupgrade image in
+the same format as the SolidRun ClearFog.
+
+An initramfs image in the simple yet Omnia-specific 'medkit' image format
+is also built in order to ease the initial flashing process.
+
+armada-385-turris-omnia.dts was added to the mainline kernel after 4.9.
+It has been backported as-is and patched separately so that the dts file
+may be removed for later kernels.
+
+Notable hardware support omissions are support for switching between SFP
+cage and copper PHY, and RGB LED control.
+
+Specifications:
+- Marvell Armada 385 1.6GHz dual-core ARMv7 CPU
+- 1GB DDR3 RAM
+- 8GB eMMC Flash
+- 5x Gigabit LAN via Marvell 88E6176 Switch (2x RGMII CPU ports)
+- 1x switchable RJ45 (88E1514 PHY) / SFP SGMII WAN
+- 2x USB 3.0
+- 12x dimmable RGB LEDs controlled by independent MCU
+- 3x Mini PCIe slots
+- Optional Compex WLE200N2 Mini PCIe AR9287 2x2 802.11b/g/n (2.4GHz)
+- Optional Compex WLE900VX Mini PCIe QCA9880 3x3 802.11ac (2.4 / 5GHz)
+- Optional Quectel EC20 Mini PCIe LTE modem
+
+Flash instructions:
+If the U-Boot environment has been modified previously (likely manually via
+serial console), first use serial to reset the default environment.
+=> env default -a
+=> saveenv
+
+Method 1 - USB 'medkit' image w/o serial
+- Copy lede-mvebu-turris-omnia-sysupgrade.img.gz and
+omnia-medkit-lede-initramfs.tar.gz to the root of a USB flash drive
+formatted with FAT32 / ext2/3/4 / btrfs / XFS.
+- Disconnect other USB devices from the Omnia and connect the flash drive
+to either USB port.
+- Power on the Omnia and hold down the rear reset button until 4 LEDs are
+illuminated, then release.
+- Wait approximately 2 minutes for the Turris Omnia to flash itself with
+the temporary image, during which LEDs will change multiple times.
+- Connect a computer to a LAN port of the Turris Omnia with a DHCP client
+- (if necessary) ssh-keygen -R 192.168.1.1
+- ssh root@192.168.1.1
+$ mount /dev/sda1 /mnt
+$ sysupgrade /mnt/lede-mvebu-turris-omnia-sysupgrade.img.gz
+- Wait another minute for the final LEDE image to be flashed. The Turris
+Omnia will reboot itself and you can remove the flash drive.
+
+Method 2 - TFTP w/ serial
+- Extract omnia-medkit-lede-initramfs.tar.gz and copy dtb + zImage to TFTP
+server (rename if desired)
+- Connect Turris Omnia WAN port to DHCP-enabled network with TFTP server
+- Connect serial console and interrupt U-Boot
+=> dhcp
+=> setenv serverip <tftp_server_ip_here>
+=> tftpboot 0x01000000 zImage
+=> tftpboot 0x02000000 dtb
+=> bootz 0x01000000 - 0x02000000
+- LEDE will now boot from ramdisk
+- Download lede-mvebu-turris-omnia-sysupgrade.img.gz to /tmp/
+$ sysupgrade /tmp/lede-mvebu-turris-omnia-sysupgrade.img.gz
+- Wait another minute for the final LEDE image to be flashed. The Turris
+Omnia will reboot itself.
+
+Signed-off-by: Ryan Mounce <ryan@mounce.com.au>
+
+Toke: Remove a couple of unneeded kernel config variables.
+
+Signed-off-by: Toke Høiland-Jørgensen <toke@toke.dk>
+---
+ package/boot/uboot-envtools/files/mvebu            |   3 +
+ .../linux/mvebu/base-files/etc/board.d/02_network  |   5 +
+ target/linux/mvebu/base-files/lib/mvebu.sh         |   3 +
+ .../linux/mvebu/base-files/lib/upgrade/clearfog.sh |  12 +
+ .../linux/mvebu/base-files/lib/upgrade/platform.sh |   4 +-
+ target/linux/mvebu/config-4.9                      |   5 +-
+ .../arch/arm/boot/dts/armada-385-turris-omnia.dts  | 392 +++++++++++++++++++++
+ target/linux/mvebu/image/Makefile                  |  45 ++-
+ .../mvebu/patches-4.9/003-add_switch_nodes.patch   |  20 ++
+ .../mvebu/patches-4.9/010-build_new_dtbs.patch     |   3 +-
+ 10 files changed, 485 insertions(+), 7 deletions(-)
+ create mode 100644 target/linux/mvebu/files/arch/arm/boot/dts/armada-385-turris-omnia.dts
+
+diff --git a/package/boot/uboot-envtools/files/mvebu b/package/boot/uboot-envtools/files/mvebu
+index e33830e0a7..24ca6798e8 100644
+--- a/package/boot/uboot-envtools/files/mvebu
++++ b/package/boot/uboot-envtools/files/mvebu
+@@ -22,6 +22,9 @@ armada-385-linksys-shelby)
+ armada-385-linksys-rango)
+ 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x20000" "0x20000"
+ 	;;
++armada-385-turris-omnia)
++	ubootenv_add_uci_config "/dev/mtd0" "0xC0000" "0x10000" "0x40000"
++	;;
+ armada-xp-linksys-mamba)
+ 	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x40000" "0x20000"
+ 	;;
+diff --git a/target/linux/mvebu/base-files/etc/board.d/02_network b/target/linux/mvebu/base-files/etc/board.d/02_network
+index 4fc95406ca..5ff119ef18 100755
+--- a/target/linux/mvebu/base-files/etc/board.d/02_network
++++ b/target/linux/mvebu/base-files/etc/board.d/02_network
+@@ -23,6 +23,11 @@ armada-xp-linksys-mamba)
+ 	ucidef_add_switch "switch0" \
+ 		"0:lan:4" "1:lan:3" "2:lan:2" "3:lan:1" "5@eth0" "4:wan" "6@eth1"
+ 	;;
++armada-385-turris-omnia)
++	ucidef_set_interface_wan "eth2"
++	ucidef_add_switch "switch0" \
++		"0:lan:0" "1:lan:1" "2:lan:2" "3:lan:3" "4:lan:4" "5@eth1" "6@eth0"
++	;;
+ armada-388-clearfog-*)
+ 	# eth0 is standalone ethernet
+ 	# eth1 is switch (-pro) or standalone ethernet (-base)
+diff --git a/target/linux/mvebu/base-files/lib/mvebu.sh b/target/linux/mvebu/base-files/lib/mvebu.sh
+index fb3ddee4f5..1cd87507a3 100755
+--- a/target/linux/mvebu/base-files/lib/mvebu.sh
++++ b/target/linux/mvebu/base-files/lib/mvebu.sh
+@@ -59,6 +59,9 @@ mvebu_board_detect() {
+ 	*"SolidRun Clearfog Base A1")
+ 		name="armada-388-clearfog-base"
+ 		;;
++	*"Turris Omnia")
++		name="armada-385-turris-omnia"
++		;;
+ 	esac
+ 
+ 	[ -z "$name" ] && name="unknown"
+diff --git a/target/linux/mvebu/base-files/lib/upgrade/clearfog.sh b/target/linux/mvebu/base-files/lib/upgrade/clearfog.sh
+index 5388b22198..0fe834786e 100644
+--- a/target/linux/mvebu/base-files/lib/upgrade/clearfog.sh
++++ b/target/linux/mvebu/base-files/lib/upgrade/clearfog.sh
+@@ -18,8 +18,20 @@ platform_check_image_clearfog() {
+ }
+ 
+ platform_do_upgrade_clearfog() {
++	local board=$(board_name)
++
+ 	sync
+ 	get_image "$1" | dd of=/dev/mmcblk0 bs=2M conv=fsync
++
++	case "$board" in
++	armada-385-turris-omnia)
++		fw_setenv lede_bootargs 'earlyprintk console=ttyS0,115200 root=/dev/mmcblk0p2 rootfstype=auto rootwait'
++		fw_setenv lede_mmcload 'setenv bootargs "$lede_bootargs cfg80211.freg=$regdomain"; fatload mmc 0 0x01000000 zImage; fatload mmc 0 0x02000000 armada-385-turris-omnia.dtb'
++		fw_setenv factory_mmcload 'setenv bootargs "$bootargs cfg80211.freg=$regdomain"; btrload mmc 0 0x01000000 boot/zImage @; btrload mmc 0 0x02000000 boot/dtb @'
++		fw_setenv mmcboot 'mw 0xf10184a0 0xfd4d4cfa; run lede_mmcload || run factory_mmcload; bootz 0x01000000 - 0x02000000'
++		;;
++	esac
++
+ 	sleep 1
+ }
+ 
+diff --git a/target/linux/mvebu/base-files/lib/upgrade/platform.sh b/target/linux/mvebu/base-files/lib/upgrade/platform.sh
+index 8241d1edcf..c639d0d38a 100755
+--- a/target/linux/mvebu/base-files/lib/upgrade/platform.sh
++++ b/target/linux/mvebu/base-files/lib/upgrade/platform.sh
+@@ -16,7 +16,7 @@ platform_do_upgrade() {
+ 	armada-385-linksys-caiman|armada-385-linksys-cobra|armada-385-linksys-rango|armada-385-linksys-shelby|armada-xp-linksys-mamba)
+ 		platform_do_upgrade_linksys "$ARGV"
+ 		;;
+-	armada-388-clearfog-base|armada-388-clearfog-pro)
++	armada-385-turris-omnia|armada-388-clearfog-base|armada-388-clearfog-pro)
+ 		platform_do_upgrade_clearfog "$ARGV"
+ 		;;
+ 	*)
+@@ -29,7 +29,7 @@ platform_copy_config() {
+ 	armada-385-linksys-caiman|armada-385-linksys-cobra|armada-385-linksys-rango|armada-385-linksys-shelby|armada-xp-linksys-mamba)
+ 		platform_copy_config_linksys
+ 		;;
+-	armada-388-clearfog-base|armada-388-clearfog-pro)
++	armada-385-turris-omnia|armada-388-clearfog-base|armada-388-clearfog-pro)
+ 		platform_copy_config_clearfog "$ARGV"
+ 		;;
+ 	esac
+diff --git a/target/linux/mvebu/config-4.9 b/target/linux/mvebu/config-4.9
+index 87040a493a..5871f115de 100644
+--- a/target/linux/mvebu/config-4.9
++++ b/target/linux/mvebu/config-4.9
+@@ -185,10 +185,13 @@ CONFIG_GENERIC_STRNCPY_FROM_USER=y
+ CONFIG_GENERIC_STRNLEN_USER=y
+ CONFIG_GLOB=y
+ CONFIG_GPIOLIB=y
++CONFIG_GPIOLIB_IRQCHIP=y
++CONFIG_GPIO_GENERIC=y
++CONFIG_GPIO_GENERIC_PLATFORM=y
+ CONFIG_GPIO_MVEBU=y
+ CONFIG_GPIO_MVEBU_PWM=y
+ CONFIG_GPIO_PCA953X=y
+-# CONFIG_GPIO_PCA953X_IRQ is not set
++CONFIG_GPIO_PCA953X_IRQ=y
+ CONFIG_GPIO_SYSFS=y
+ CONFIG_HANDLE_DOMAIN_IRQ=y
+ CONFIG_HARDIRQS_SW_RESEND=y
+diff --git a/target/linux/mvebu/files/arch/arm/boot/dts/armada-385-turris-omnia.dts b/target/linux/mvebu/files/arch/arm/boot/dts/armada-385-turris-omnia.dts
+new file mode 100644
+index 0000000000..be16ce39fb
+--- /dev/null
++++ b/target/linux/mvebu/files/arch/arm/boot/dts/armada-385-turris-omnia.dts
+@@ -0,0 +1,392 @@
++/*
++ * Device Tree file for the Turris Omnia
++ *
++ * Copyright (C) 2016 Uwe Kleine-König <uwe@kleine-koenig.org>
++ * Copyright (C) 2016 Tomas Hlavacek <tmshlvkc@gmail.com>
++ *
++ * This file is dual-licensed: you can use it either under the terms
++ * of the GPL or the X11 license, at your option. Note that this dual
++ * licensing only applies to this file, and not this project as a
++ * whole.
++ *
++ *  a) This file is licensed under the terms of the GNU General Public
++ *     License version 2.  This program is licensed "as is" without
++ *     any warranty of any kind, whether express or implied.
++ *
++ * Or, alternatively,
++ *
++ *  b) Permission is hereby granted, free of charge, to any person
++ *     obtaining a copy of this software and associated documentation
++ *     files (the "Software"), to deal in the Software without
++ *     restriction, including without limitation the rights to use,
++ *     copy, modify, merge, publish, distribute, sublicense, and/or
++ *     sell copies of the Software, and to permit persons to whom the
++ *     Software is furnished to do so, subject to the following
++ *     conditions:
++ *
++ *     The above copyright notice and this permission notice shall be
++ *     included in all copies or substantial portions of the Software.
++ *
++ *     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ *     EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
++ *     OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ *     NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
++ *     HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
++ *     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ *     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
++ *     OTHER DEALINGS IN THE SOFTWARE.
++ */
++
++/*
++ * Schematic available at https://www.turris.cz/doc/_media/rtrom01-schema.pdf
++ */
++
++/dts-v1/;
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++#include "armada-385.dtsi"
++
++/ {
++	model = "Turris Omnia";
++	compatible = "cznic,turris-omnia", "marvell,armada385", "marvell,armada380";
++
++	chosen {
++		stdout-path = &uart0;
++	};
++
++	memory {
++		device_type = "memory";
++		reg = <0x00000000 0x40000000>; /* 1024 MB */
++	};
++
++	soc {
++		ranges = <MBUS_ID(0xf0, 0x01) 0 0xf1000000 0x100000
++			  MBUS_ID(0x01, 0x1d) 0 0xfff00000 0x100000
++			  MBUS_ID(0x09, 0x19) 0 0xf1100000 0x10000
++			  MBUS_ID(0x09, 0x15) 0 0xf1110000 0x10000>;
++
++		internal-regs {
++
++			/* USB part of the PCIe2/USB 2.0 port */
++			usb@58000 {
++				status = "okay";
++			};
++
++			sata@a8000 {
++				status = "okay";
++			};
++
++			sdhci@d8000 {
++				pinctrl-names = "default";
++				pinctrl-0 = <&sdhci_pins>;
++				status = "okay";
++
++				bus-width = <8>;
++				no-1-8-v;
++				non-removable;
++			};
++
++			usb3@f0000 {
++				status = "okay";
++			};
++
++			usb3@f8000 {
++				status = "okay";
++			};
++		};
++
++		pcie-controller {
++			status = "okay";
++
++			pcie@1,0 {
++				/* Port 0, Lane 0 */
++				status = "okay";
++			};
++
++			pcie@2,0 {
++				/* Port 1, Lane 0 */
++				status = "okay";
++			};
++
++			pcie@3,0 {
++				/* Port 2, Lane 0 */
++				status = "okay";
++			};
++		};
++	};
++};
++
++/* Connected to 88E6176 switch, port 6 */
++&eth0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&ge0_rgmii_pins>;
++	status = "okay";
++	phy-mode = "rgmii";
++
++	fixed-link {
++		speed = <1000>;
++		full-duplex;
++	};
++};
++
++/* Connected to 88E6176 switch, port 5 */
++&eth1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&ge1_rgmii_pins>;
++	status = "okay";
++	phy-mode = "rgmii";
++
++	fixed-link {
++		speed = <1000>;
++		full-duplex;
++	};
++};
++
++/* WAN port */
++&eth2 {
++	status = "okay";
++	phy-mode = "sgmii";
++	phy = <&phy1>;
++};
++
++&i2c0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c0_pins>;
++	status = "okay";
++
++	i2cmux@70 {
++		compatible = "nxp,pca9547";
++		#address-cells = <1>;
++		#size-cells = <0>;
++		reg = <0x70>;
++		status = "okay";
++
++		i2c@0 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <0>;
++
++			/* STM32F0 command interface at address 0x2a */
++			/* leds device (in STM32F0) at address 0x2b */
++
++			eeprom@54 {
++				compatible = "atmel,24c64";
++				reg = <0x54>;
++
++				/* The EEPROM contains data for bootloader.
++				 * Contents:
++				 * 	struct omnia_eeprom {
++				 * 		u32 magic; (=0x0341a034 in LE)
++				 *		u32 ramsize; (in GiB)
++				 * 		char regdomain[4];
++				 * 		u32 crc32;
++				 * 	};
++				 */
++			};
++		};
++
++		i2c@1 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <1>;
++
++			/* routed to PCIe0/mSATA connector (CN7A) */
++		};
++
++		i2c@2 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <2>;
++
++			/* routed to PCIe1/USB2 connector (CN61A) */
++		};
++
++		i2c@3 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <3>;
++
++			/* routed to PCIe2 connector (CN62A) */
++		};
++
++		i2c@4 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <4>;
++
++			/* routed to SFP+ */
++		};
++
++		i2c@5 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <5>;
++
++			/* ATSHA204A at address 0x64 */
++		};
++
++		i2c@6 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <6>;
++
++			/* exposed on pin header */
++		};
++
++		i2c@7 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <7>;
++
++			pcawan: gpio@71 {
++				/*
++				 * GPIO expander for SFP+ signals and
++				 * and phy irq
++				 */
++				compatible = "nxp,pca9538";
++				reg = <0x71>;
++
++				pinctrl-names = "default";
++				pinctrl-0 = <&pcawan_pins>;
++
++				interrupt-parent = <&gpio1>;
++				interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
++
++				gpio-controller;
++				#gpio-cells = <2>;
++			};
++		};
++	};
++};
++
++&mdio {
++	pinctrl-names = "default";
++	pinctrl-0 = <&mdio_pins>;
++	status = "okay";
++
++	phy1: phy@1 {
++		status = "okay";
++		compatible = "ethernet-phy-id0141.0DD1", "ethernet-phy-ieee802.3-c22";
++		reg = <1>;
++
++		/* irq is connected to &pcawan pin 7 */
++	};
++
++	/* Switch MV88E6176 at address 0x10 */
++	switch@10 {
++		compatible = "marvell,mv88e6085";
++		#address-cells = <1>;
++		#size-cells = <0>;
++		dsa,member = <0 0>;
++
++		reg = <0x10>;
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			ports@0 {
++				reg = <0>;
++				label = "lan0";
++			};
++
++			ports@1 {
++				reg = <1>;
++				label = "lan1";
++			};
++
++			ports@2 {
++				reg = <2>;
++				label = "lan2";
++			};
++
++			ports@3 {
++				reg = <3>;
++				label = "lan3";
++			};
++
++			ports@4 {
++				reg = <4>;
++				label = "lan4";
++			};
++
++			ports@5 {
++				reg = <5>;
++				label = "cpu";
++				ethernet = <&eth1>;
++				phy-mode = "rgmii-id";
++
++				fixed-link {
++					speed = <1000>;
++					full-duplex;
++				};
++			};
++
++			/* port 6 is connected to eth0 */
++		};
++	};
++};
++
++&pinctrl {
++	pcawan_pins: pcawan-pins {
++		marvell,pins = "mpp46";
++		marvell,function = "gpio";
++	};
++
++	spi0cs0_pins: spi0cs0-pins {
++		marvell,pins = "mpp25";
++		marvell,function = "spi0";
++	};
++
++	spi0cs1_pins: spi0cs1-pins {
++		marvell,pins = "mpp26";
++		marvell,function = "spi0";
++	};
++};
++
++&spi0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi0_pins &spi0cs0_pins>;
++	status = "okay";
++
++	spi-nor@0 {
++		compatible = "spansion,s25fl164k", "jedec,spi-nor";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		reg = <0>;
++		spi-max-frequency = <40000000>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				reg = <0x0 0x00100000>;
++				label = "U-Boot";
++			};
++
++			partition@100000 {
++				reg = <0x00100000 0x00700000>;
++				label = "Rescue system";
++			};
++		};
++	};
++
++	/* MISO, MOSI, SCLK and CS1 are routed to pin header CN11 */
++};
++
++&uart0 {
++	/* Pin header CN10 */
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart0_pins>;
++	status = "okay";
++};
++
++&uart1 {
++	/* Pin header CN11 */
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart1_pins>;
++	status = "okay";
++};
+diff --git a/target/linux/mvebu/image/Makefile b/target/linux/mvebu/image/Makefile
+index 989ba5084b..b1fe663eff 100644
+--- a/target/linux/mvebu/image/Makefile
++++ b/target/linux/mvebu/image/Makefile
+@@ -33,6 +33,10 @@ define Build/boot-scr-cfbase
+ 	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -d cfbase-boot.script $@.bootscript
+ endef
+ 
++define Build/boot-scr-dummy
++	echo "# Boot script not used for this target" > $@.bootscript
++endef
++
+ define Build/boot-img
+ 	rm -f $@.boot
+ 	mkfs.fat -C $@.boot 16384
+@@ -41,10 +45,29 @@ define Build/boot-img
+ 	mcopy -i $@.boot $@.bootscript ::boot.scr
+ endef
+ 
++define Build/omnia-medkit-initramfs
++	$(TAR) -c -T /dev/null -f $@
++	rm -rf $(dir $(IMAGE_KERNEL))boot
++	mkdir -p $(dir $(IMAGE_KERNEL))boot/boot/
++	cp $(KDIR)/zImage-initramfs $(dir $(IMAGE_KERNEL))boot/boot/zImage
++	cp $(DTS_DIR)/$(DEVICE_DTS).dtb $(dir $(IMAGE_KERNEL))boot/boot/dtb
++	$(TAR) -rp --numeric-owner --owner=0 --group=0 --sort=name \
++		$(if $(SOURCE_DATE_EPOCH),--mtime="@$(SOURCE_DATE_EPOCH)") \
++		--file=$@ -C $(dir $(IMAGE_KERNEL))boot/ .
++endef
++
++define Build/sdcard-u-boot-clearfog
++	cp "$(STAGING_DIR_IMAGE)/clearfog-u-boot-spl.kwb" $@.kwb
++endef
++
++define Build/sdcard-u-boot-dummy
++	touch $@.kwb
++endef
++
+ define Build/sdcard-img
+ 	ROOTFS_SIZE=$$(( $(CONFIG_TARGET_ROOTFS_PARTSIZE) * 1024 * 2 )); \
+ 	./gen_mvebu_sdcard_img.sh $@ \
+-		"$(STAGING_DIR_IMAGE)/clearfog-u-boot-spl.kwb" \
++		$@.kwb \
+ 		c 32768 $@.boot \
+ 		83 $$ROOTFS_SIZE $(IMAGE_ROOTFS)
+ endef
+@@ -196,7 +219,7 @@ define Device/armada-388-clearfog-pro
+   DEVICE_TITLE := SolidRun ClearFog Pro
+   DEVICE_PACKAGES := mkf2fs e2fsprogs swconfig kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1
+   IMAGES := sdcard.img.gz
+-  IMAGE/sdcard.img.gz := boot-scr-cfpro | boot-img | sdcard-img | gzip | append-metadata
++  IMAGE/sdcard.img.gz := boot-scr-cfpro | boot-img | sdcard-u-boot-clearfog | sdcard-img | gzip | append-metadata
+   IMAGE_NAME = $$(IMAGE_PREFIX)-$$(2)
+   DEVICE_DTS := armada-388-clearfog-pro armada-388-clearfog-base
+ endef
+@@ -208,7 +231,7 @@ define Device/armada-388-clearfog-base
+   DEVICE_TITLE := SolidRun ClearFog Base
+   DEVICE_PACKAGES := mkf2fs e2fsprogs kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1
+   IMAGES := sdcard.img.gz
+-  IMAGE/sdcard.img.gz := boot-scr-cfbase | boot-img | sdcard-img | gzip | append-metadata
++  IMAGE/sdcard.img.gz := boot-scr-cfbase | boot-img | sdcard-u-boot-clearfog | sdcard-img | gzip | append-metadata
+   IMAGE_NAME = $$(IMAGE_PREFIX)-$$(2)
+   DEVICE_DTS := armada-388-clearfog-pro armada-388-clearfog-base
+ endef
+@@ -222,4 +245,20 @@ define Device/globalscale-mirabox
+ endef
+ TARGET_DEVICES += globalscale-mirabox
+ 
++define Device/turris-omnia
++  KERNEL_INSTALL := 1
++  KERNEL := kernel-bin
++  KERNEL_INITRAMFS := kernel-bin
++  DEVICE_TITLE := Turris Omnia
++  DEVICE_PACKAGES :=  \
++  	  mkf2fs e2fsprogs swconfig kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1 \
++  	  wpad-mini kmod-ath9k kmod-ath10k ath10k-firmware-qca988x
++  IMAGES := $$(IMAGE_PREFIX)-sysupgrade.img.gz omnia-medkit-$$(IMAGE_PREFIX)-initramfs.tar.gz
++  IMAGE/$$(IMAGE_PREFIX)-sysupgrade.img.gz := boot-scr-dummy | boot-img | sdcard-u-boot-dummy | sdcard-img | gzip | append-metadata
++  IMAGE/omnia-medkit-$$(IMAGE_PREFIX)-initramfs.tar.gz := omnia-medkit-initramfs | gzip
++  IMAGE_NAME = $$(2)
++  DEVICE_DTS := armada-385-turris-omnia
++endef
++TARGET_DEVICES += turris-omnia
++
+ $(eval $(call BuildImage))
+diff --git a/target/linux/mvebu/patches-4.9/003-add_switch_nodes.patch b/target/linux/mvebu/patches-4.9/003-add_switch_nodes.patch
+index 38a48d308e..f2ad6c7497 100644
+--- a/target/linux/mvebu/patches-4.9/003-add_switch_nodes.patch
++++ b/target/linux/mvebu/patches-4.9/003-add_switch_nodes.patch
+@@ -38,3 +38,23 @@
+  };
+  
+  &pinctrl {
++--- a/arch/arm/boot/dts/armada-385-turris-omnia.dts
+++++ b/arch/arm/boot/dts/armada-385-turris-omnia.dts
++@@ -115,6 +115,17 @@
++ 			};
++ 		};
++ 	};
+++
+++	mvsw61xx {
+++		compatible = "marvell,88e6176";
+++		status = "okay";
+++		reg = <0x10>;
+++		is-indirect;
+++
+++		mii-bus = <&mdio>;
+++		cpu-port-0 = <6>;
+++		cpu-port-1 = <5>;
+++	};
++ };
++ 
++ /* Connected to 88E6176 switch, port 6 */
+diff --git a/target/linux/mvebu/patches-4.9/010-build_new_dtbs.patch b/target/linux/mvebu/patches-4.9/010-build_new_dtbs.patch
+index 1eb647df9c..dbda6619eb 100644
+--- a/target/linux/mvebu/patches-4.9/010-build_new_dtbs.patch
++++ b/target/linux/mvebu/patches-4.9/010-build_new_dtbs.patch
+@@ -1,11 +1,12 @@
+ --- a/arch/arm/boot/dts/Makefile
+ +++ b/arch/arm/boot/dts/Makefile
+-@@ -921,6 +921,8 @@ dtb-$(CONFIG_MACH_ARMADA_38X) += \
++@@ -921,6 +921,9 @@ dtb-$(CONFIG_MACH_ARMADA_38X) += \
+  	armada-385-db-ap.dtb \
+  	armada-385-linksys-caiman.dtb \
+  	armada-385-linksys-cobra.dtb \
+ +	armada-385-linksys-rango.dtb \
+ +	armada-385-linksys-shelby.dtb \
+++	armada-385-turris-omnia.dtb \
+  	armada-388-clearfog.dtb \
+  	armada-388-db.dtb \
+  	armada-388-gp.dtb \

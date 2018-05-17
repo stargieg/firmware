@@ -8,15 +8,16 @@ GIT_REPO=git config --get remote.origin.url
 GIT_BRANCH=git symbolic-ref HEAD | sed -e 's,.*/\(.*\),\1,'
 REVISION=git describe --always
 
-FW_REVISION=$(shell $(REVISION))
+#FW_REVISION=$(shell $(REVISION))
+FW_REVISION=$(shell echo $(LEDE_COMMIT) | cut -b -7)
 
 # set dir and file names
 FW_DIR=$(shell pwd)
 LEDE_SRC_DIR=$(FW_DIR)/source
 TARGET_CONFIG=$(FW_DIR)/configs/common.config $(FW_DIR)/configs/$(TARGET).config
 IB_BUILD_DIR=$(FW_DIR)/imgbldr_tmp
-FW_TARGET_DIR=$(FW_DIR)/lede/$(FW_REVISION)/targets/$(MAINTARGET)/$(SUBTARGET)
-PACKAGE_TARGET_DIR=$(FW_DIR)/lede/$(FW_REVISION)
+FW_TARGET_DIR=$(FW_DIR)/firmware/$(FW_REVISION)/targets/$(MAINTARGET)/$(SUBTARGET)
+PACKAGE_TARGET_DIR=$(FW_DIR)/firmware/$(FW_REVISION)
 UMASK=umask 022
 
 # if any of the following files have been changed: clean up lede dir
@@ -92,7 +93,7 @@ endif
 # lede config
 $(LEDE_SRC_DIR)/.config: .stamp-patched $(TARGET_CONFIG) .stamp-build_rev lede-clean-tmp
 	cat $(TARGET_CONFIG) >$(LEDE_SRC_DIR)/.config
-	echo "CONFIG_DOWNLOAD_FOLDER=\"$(FW_DIR)/dl\"" >>$(LEDE_SRC_DIR)/.config
+	#echo "CONFIG_DOWNLOAD_FOLDER=\"$(FW_DIR)/dl\"" >>$(LEDE_SRC_DIR)/.config
 	sed -i "/^CONFIG_VERSION_REPO=/ s/\"$$/\/$(FW_REVISION)\"/" $(LEDE_SRC_DIR)/.config
 	$(UMASK); \
 	  $(MAKE) -C $(LEDE_SRC_DIR) defconfig

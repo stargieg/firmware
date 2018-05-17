@@ -20,10 +20,8 @@ iptables-mod-u32
 iptables-mod-ulog
 ip6tables-extra
 ip6tables-mod-nat
-kmod-ipt-nathelper-rtsp
 kmod-nf-nathelper
 kmod-nf-nathelper-extra
-kmod-gre
 
 # GUI
 luci2-ffwizard
